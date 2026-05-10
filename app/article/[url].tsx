@@ -19,6 +19,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import RenderHtml, { MixedStyleDeclaration } from 'react-native-render-html';
 
 import { FluxHeader } from '@/components/flux-header';
@@ -135,10 +136,10 @@ interface ChunkRendererProps {
   systemFonts: string[];
   renderersProps: Record<string, unknown>;
   renderers: Record<string, (props: any) => React.ReactNode>;
+  themeSV: SharedValue<number>;
 }
 
 const ArticleChunk = memo(function ArticleChunk(props: ChunkRendererProps) {
-  const isDark = useThemeStore((s) => s.themeMode === 'dark');
   const [inactiveBuilt, setInactiveBuilt] = useState(false);
 
   useEffect(() => {
@@ -151,39 +152,43 @@ const ArticleChunk = memo(function ArticleChunk(props: ChunkRendererProps) {
   const {
     html, contentWidth, lightBaseStyle, darkBaseStyle,
     lightTagsStyles, darkTagsStyles, systemFonts, renderersProps, renderers,
+    themeSV,
   } = props;
 
   const common = { contentWidth, systemFonts, renderersProps, renderers };
 
+  const lightStyle = useAnimatedStyle(() => ({
+    opacity: 1 - themeSV.value,
+  }));
+
+  const darkStyle = useAnimatedStyle(() => ({
+    opacity: themeSV.value,
+  }));
+
   return (
     <View>
-      <View style={isDark ? chunkStyles.hidden : chunkStyles.visible}>
+      <Animated.View style={lightStyle}>
         <RenderHtml
           {...common}
           source={{ html }}
           baseStyle={lightBaseStyle}
           tagsStyles={lightTagsStyles}
         />
-      </View>
+      </Animated.View>
       {inactiveBuilt && (
-        <View
-          style={[StyleSheet.absoluteFill, isDark ? chunkStyles.visible : chunkStyles.hidden]}
-          pointerEvents={isDark ? 'auto' : 'none'}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, darkStyle]}
+          pointerEvents="none">
           <RenderHtml
             {...common}
             source={{ html }}
             baseStyle={darkBaseStyle}
             tagsStyles={darkTagsStyles}
           />
-        </View>
+        </Animated.View>
       )}
     </View>
   );
-});
-
-const chunkStyles = StyleSheet.create({
-  visible: { opacity: 1 },
-  hidden: { opacity: 0 },
 });
 
 export default function ArticleScreen() {
@@ -193,6 +198,7 @@ export default function ArticleScreen() {
   const feedUrl = decodeURIComponent(encodedFeedUrl);
   const { width } = useWindowDimensions();
   const colors = useFluxColors();
+  const themeMode = useThemeStore((s) => s.themeMode);
   const markTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const article = useArticleStore((s) => s.articles[articleUrl]);
@@ -200,6 +206,9 @@ export default function ArticleScreen() {
   const ensureBody = useArticleStore((s) => s.ensureBody);
 
   const [body, setBody] = useState<string | null>(null);
+
+  const themeSV = useSharedValue(themeMode === 'dark' ? 1 : 0);
+  themeSV.value = themeMode === 'dark' ? 1 : 0;
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const contentWidth = width - Spacing.h * 2;
@@ -291,9 +300,10 @@ export default function ArticleScreen() {
         systemFonts={systemFonts}
         renderersProps={renderersProps}
         renderers={renderers}
+        themeSV={themeSV}
       />
     ),
-    [contentWidth, lightBaseStyle, darkBaseStyle, lightTagsStyles, darkTagsStyles, systemFonts, renderersProps, renderers],
+    [contentWidth, lightBaseStyle, darkBaseStyle, lightTagsStyles, darkTagsStyles, systemFonts, renderersProps, renderers, themeSV],
   );
 
   const ListHeader = useMemo(
@@ -353,9 +363,9 @@ export default function ArticleScreen() {
           )
         }
         contentContainerStyle={styles.content}
-        initialNumToRender={3}
-        maxToRenderPerBatch={2}
-        windowSize={5}
+        initialNumToRender={2}
+        maxToRenderPerBatch={1}
+        windowSize={3}
         removeClippedSubviews
       />
     </View>
