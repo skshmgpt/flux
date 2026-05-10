@@ -1,24 +1,44 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { ThemeTransition } from '@/components/theme-transition';
+import { useFluxColors } from '@/hooks/use-flux-colors';
+import { initAudio } from '@/lib/clicks';
+import { useStore } from '@/lib/store';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
+function StackHost() {
+  const colors = useFluxColors();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <View style={[styles.host, { backgroundColor: colors.bg }]}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+        }}
+      />
+    </View>
   );
 }
+
+export default function RootLayout() {
+  const themeMode = useStore((s) => s.themeMode);
+  useEffect(() => {
+    void initAudio();
+  }, []);
+  return (
+    <SafeAreaProvider>
+      <ThemeTransition>
+        <StackHost />
+      </ThemeTransition>
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
+    </SafeAreaProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  host: { flex: 1 },
+});

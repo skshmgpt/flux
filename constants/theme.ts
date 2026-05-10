@@ -1,53 +1,67 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// Single accent — the only color that matters
+const PRIMARY = '#3553FF';
 
-export const Colors = {
+export interface FluxColorSet {
+  bg: string;
+  text: string;
+  surface: string;
+  muted: string;
+  border: string;
+  gradient: readonly string[];
+}
+
+export const FluxColors = {
+  primary: PRIMARY,
+
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    bg: '#FFFFFF',
+    text: '#0A0A0A',
+    surface: '#F5F7FF',
+    muted: '#9CA3AF',
+    border: '#E5E7EB',
+    gradient: [PRIMARY, '#6679FF', '#B3BDFF', '#E8EBFF', '#FFFFFF'] as const,
   },
+
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    bg: '#0A0A0A',
+    text: '#FFFFFF',
+    surface: '#11132B',
+    muted: '#6B7280',
+    border: '#1F2937',
+    gradient: [PRIMARY, '#1A2A8A', '#0F1554', '#0A0E2A', '#0A0A0A'] as const,
   },
 };
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
+    mono: 'SF Mono',
+    serif: 'New York',
   },
   default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    mono: 'JetBrains Mono',
+    serif: 'Noto Serif',
   },
 });
+
+export const Typography = {
+  title: { fontSize: 20, fontWeight: '600' as const, lineHeight: 28 },
+  label: { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
+  meta: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
+  body: { fontSize: 17, fontWeight: '400' as const, lineHeight: 27 }, // 17 * 1.6 ≈ 27
+};
+
+export const Spacing = {
+  h: 24, // horizontal padding
+  v: 20, // vertical item gap
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 24,
+};
+
+export const Radii = {
+  card: 12,
+  button: 12,
+};
