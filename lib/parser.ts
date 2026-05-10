@@ -94,7 +94,7 @@ function parseItem(xml: string): ParsedItem {
     tag('author', xml);
 
   return {
-    title: title || 'Untitled',
+    title: decodeEntities(title) || 'Untitled',
     link: link || '',
     content,
     contentSnippet: contentSnippet || '',
@@ -140,8 +140,8 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
     await yieldToUI();
     const items = await parseItemsChunked(itemBlocks);
     return {
-      title: tag('title', channel) || url,
-      description: tag('description', channel) || undefined,
+      title: decodeEntities(tag('title', channel)) || url,
+      description: decodeEntities(tag('description', channel)) || undefined,
       items,
     };
   }
@@ -154,8 +154,8 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
     await yieldToUI();
     const items = await parseItemsChunked(entryBlocks);
     return {
-      title: tag('title', feedXml) || url,
-      description: tag('subtitle', feedXml) || undefined,
+      title: decodeEntities(tag('title', feedXml)) || url,
+      description: decodeEntities(tag('subtitle', feedXml)) || undefined,
       items,
     };
   }
@@ -169,8 +169,8 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
     await yieldToUI();
     const items = await parseItemsChunked(itemBlocks);
     return {
-      title: tag('title', channelXml) || url,
-      description: tag('description', channelXml) || undefined,
+      title: decodeEntities(tag('title', channelXml)) || url,
+      description: decodeEntities(tag('description', channelXml)) || undefined,
       items,
     };
   }

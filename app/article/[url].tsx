@@ -3,7 +3,6 @@ import * as WebBrowser from 'expo-web-browser';
 import {
   memo,
   useCallback,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -12,7 +11,9 @@ import {
 import {
   ActivityIndicator,
   FlatList,
+  InteractionManager,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -25,6 +26,7 @@ import { FluxColorSet, FluxColors, Fonts, Spacing, Typography } from '@/constant
 import { useFluxColors } from '@/hooks/use-flux-colors';
 import { useArticleStore } from '@/lib/article-store';
 import { getCachedBody } from '@/lib/cache';
+import { useThemeStore } from '@/lib/theme-store';
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
@@ -41,10 +43,6 @@ function formatDate(dateStr: string): string {
   }
 }
 
-// Split body HTML into block-level chunks so each one can be parsed by
-// react-native-render-html only when its FlatList row mounts. This keeps
-// the JS thread free for taps/scroll: top chunks render immediately,
-// the rest stream in as the user scrolls.
 function splitHtmlBlocks(html: string): string[] {
   const splitter = /<\/(p|h[1-6]|blockquote|pre|ul|ol|figure|table|div)>/gi;
   const out: string[] = [];
@@ -60,31 +58,132 @@ function splitHtmlBlocks(html: string): string[] {
     const tail = html.slice(lastIdx).trim();
     if (tail) out.push(tail);
   }
-  // If splitter found nothing (pure inline HTML), fall back to one chunk.
   if (out.length === 0 && html.trim()) out.push(html);
   return out;
+}
+
+function makeBaseStyle(c: FluxColorSet): MixedStyleDeclaration {
+  return {
+    fontFamily: Fonts?.serif ?? 'serif',
+    fontSize: Typography.body.fontSize,
+    lineHeight: Typography.body.lineHeight,
+    color: c.text,
+  };
+}
+
+function makeTagsStyles(c: FluxColorSet, contentWidth: number): Record<string, MixedStyleDeclaration> {
+  return {
+    a: { color: FluxColors.primary, textDecorationLine: 'underline' as const },
+    img: { maxWidth: contentWidth },
+    blockquote: {
+      borderLeftWidth: 2,
+      borderLeftColor: FluxColors.primary,
+      paddingLeft: Spacing.md,
+      marginLeft: 0,
+      marginBottom: Spacing.md,
+      opacity: 0.85,
+    },
+    code: {
+      fontFamily: Fonts?.mono ?? 'monospace',
+      fontSize: 13,
+      backgroundColor: c.surface,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
+    },
+    pre: {
+      fontFamily: Fonts?.mono ?? 'monospace',
+      fontSize: 13,
+      lineHeight: 20,
+      backgroundColor: c.surface,
+      padding: Spacing.md,
+      borderRadius: 8,
+      marginBottom: Spacing.md,
+      borderLeftWidth: 3,
+      borderLeftColor: FluxColors.primary,
+    },
+    h1: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 22, fontWeight: '700' as const, color: c.text, marginTop: Spacing.lg, marginBottom: Spacing.sm, lineHeight: 30 },
+    h2: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 19, fontWeight: '600' as const, color: c.text, marginTop: Spacing.md, marginBottom: Spacing.sm, lineHeight: 26 },
+    h3: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 17, fontWeight: '600' as const, color: c.text, marginTop: Spacing.md, marginBottom: Spacing.xs, lineHeight: 24 },
+    h4: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 15, fontWeight: '600' as const, color: c.text, marginTop: Spacing.md, marginBottom: Spacing.xs, lineHeight: 22 },
+    h5: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 14, fontWeight: '600' as const, color: c.muted, marginTop: Spacing.sm, marginBottom: Spacing.xs, lineHeight: 20 },
+    h6: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 13, fontWeight: '600' as const, color: c.muted, marginTop: Spacing.sm, marginBottom: Spacing.xs, lineHeight: 18 },
+    p: { marginBottom: Spacing.md, lineHeight: Typography.body.lineHeight },
+    ul: { marginBottom: Spacing.md, paddingLeft: Spacing.md },
+    ol: { marginBottom: Spacing.md, paddingLeft: Spacing.md },
+    li: { marginBottom: 4, lineHeight: Typography.body.lineHeight },
+    hr: { height: StyleSheet.hairlineWidth, backgroundColor: c.border, marginVertical: Spacing.md, borderWidth: 0 },
+    figure: { marginBottom: Spacing.md, marginLeft: 0, marginRight: 0 },
+    figcaption: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 12, color: c.muted, marginTop: 4, textAlign: 'center' as const },
+    table: { marginBottom: Spacing.md, borderWidth: 1, borderColor: c.border, borderRadius: 4 },
+    th: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 13, fontWeight: '600' as const, color: c.text, backgroundColor: c.surface, padding: 8, borderBottomWidth: 1, borderBottomColor: c.border },
+    td: { padding: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border, lineHeight: Typography.body.lineHeight },
+    strong: { fontWeight: '700' as const },
+    em: { fontStyle: 'italic' as const },
+  };
 }
 
 interface ChunkRendererProps {
   html: string;
   contentWidth: number;
-  baseStyle: MixedStyleDeclaration;
-  tagsStyles: Record<string, MixedStyleDeclaration>;
+  lightBaseStyle: MixedStyleDeclaration;
+  darkBaseStyle: MixedStyleDeclaration;
+  lightTagsStyles: Record<string, MixedStyleDeclaration>;
+  darkTagsStyles: Record<string, MixedStyleDeclaration>;
   systemFonts: string[];
   renderersProps: Record<string, unknown>;
+  renderers: Record<string, (props: any) => React.ReactNode>;
 }
 
 const ArticleChunk = memo(function ArticleChunk(props: ChunkRendererProps) {
+  const isDark = useThemeStore((s) => s.themeMode === 'dark');
+  const [inactiveBuilt, setInactiveBuilt] = useState(false);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setInactiveBuilt(true);
+    });
+    return () => handle.cancel();
+  }, []);
+
+  const {
+    html, contentWidth, lightBaseStyle, darkBaseStyle,
+    lightTagsStyles, darkTagsStyles, systemFonts, renderersProps, renderers,
+  } = props;
+
+  const common = { contentWidth, systemFonts, renderersProps, renderers };
+
   return (
-    <RenderHtml
-      contentWidth={props.contentWidth}
-      source={{ html: props.html }}
-      baseStyle={props.baseStyle}
-      systemFonts={props.systemFonts}
-      tagsStyles={props.tagsStyles}
-      renderersProps={props.renderersProps}
-    />
+    <View>
+      <View style={isDark ? chunkStyles.hidden : chunkStyles.visible}>
+        <RenderHtml
+          {...common}
+          source={{ html }}
+          baseStyle={lightBaseStyle}
+          tagsStyles={lightTagsStyles}
+        />
+      </View>
+      {inactiveBuilt && (
+        <View
+          style={[StyleSheet.absoluteFill, isDark ? chunkStyles.visible : chunkStyles.hidden]}
+          pointerEvents={isDark ? 'auto' : 'none'}>
+          <RenderHtml
+            {...common}
+            source={{ html }}
+            baseStyle={darkBaseStyle}
+            tagsStyles={darkTagsStyles}
+          />
+        </View>
+      )}
+    </View>
   );
+});
+
+const chunkStyles = StyleSheet.create({
+  visible: { opacity: 1 },
+  hidden: { opacity: 0 },
 });
 
 export default function ArticleScreen() {
@@ -96,91 +195,40 @@ export default function ArticleScreen() {
   const colors = useFluxColors();
   const markTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Direct O(1) lookup; this subscriber only re-renders when *this* article
-  // mutates, not when any other article in the store changes.
   const article = useArticleStore((s) => s.articles[articleUrl]);
   const toggleRead = useArticleStore((s) => s.toggleRead);
   const ensureBody = useArticleStore((s) => s.ensureBody);
 
-  // null = still resolving, '' = resolved with no body, else HTML
   const [body, setBody] = useState<string | null>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const contentWidth = width - Spacing.h * 2;
 
-  // Defer the color propagation into RenderHtml chunks. When the theme
-  // toggles, the rest of the UI updates synchronously (header, borders,
-  // title), but the expensive HTML re-parse happens on a low-priority
-  // commit — masked by the 150ms ThemeTransition overlay. This is what
-  // actually keeps theme toggles snappy on long articles.
-  const deferredColors = useDeferredValue(colors);
+  const lightBaseStyle = useMemo(() => makeBaseStyle(FluxColors.light), []);
+  const darkBaseStyle = useMemo(() => makeBaseStyle(FluxColors.dark), []);
 
-  const baseStyle: MixedStyleDeclaration = useMemo(
-    () => ({
-      fontFamily: Fonts?.serif ?? 'serif',
-      fontSize: Typography.body.fontSize,
-      lineHeight: Typography.body.lineHeight,
-      color: deferredColors.text,
-    }),
-    [deferredColors],
-  );
-
-  const tagsStyles = useMemo(
-    () => ({
-      a: { color: FluxColors.primary, textDecorationLine: 'underline' as const },
-      img: { maxWidth: contentWidth },
-      blockquote: {
-        borderLeftWidth: 2,
-        borderLeftColor: FluxColors.primary,
-        paddingLeft: Spacing.md,
-        marginLeft: 0,
-        marginBottom: Spacing.md,
-        opacity: 0.85,
-      },
-      code: {
-        fontFamily: Fonts?.mono ?? 'monospace',
-        fontSize: 13,
-        backgroundColor: deferredColors.surface,
-        paddingHorizontal: 4,
-        borderRadius: 3,
-      },
-      pre: {
-        fontFamily: Fonts?.mono ?? 'monospace',
-        fontSize: 13,
-        lineHeight: 20,
-        backgroundColor: deferredColors.surface,
-        padding: Spacing.md,
-        borderRadius: 8,
-        marginBottom: Spacing.md,
-        overflow: 'hidden' as const,
-      },
-      h1: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 22, fontWeight: '700' as const, color: deferredColors.text, marginTop: Spacing.lg, marginBottom: Spacing.sm, lineHeight: 30 },
-      h2: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 19, fontWeight: '600' as const, color: deferredColors.text, marginTop: Spacing.md, marginBottom: Spacing.sm, lineHeight: 26 },
-      h3: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 17, fontWeight: '600' as const, color: deferredColors.text, marginTop: Spacing.md, marginBottom: Spacing.xs, lineHeight: 24 },
-      h4: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 15, fontWeight: '600' as const, color: deferredColors.text, marginTop: Spacing.md, marginBottom: Spacing.xs, lineHeight: 22 },
-      h5: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 14, fontWeight: '600' as const, color: deferredColors.muted, marginTop: Spacing.sm, marginBottom: Spacing.xs, lineHeight: 20 },
-      h6: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 13, fontWeight: '600' as const, color: deferredColors.muted, marginTop: Spacing.sm, marginBottom: Spacing.xs, lineHeight: 18 },
-      p: { marginBottom: Spacing.md, lineHeight: Typography.body.lineHeight },
-      ul: { marginBottom: Spacing.md, paddingLeft: Spacing.md },
-      ol: { marginBottom: Spacing.md, paddingLeft: Spacing.md },
-      li: { marginBottom: 4, lineHeight: Typography.body.lineHeight },
-      hr: { height: StyleSheet.hairlineWidth, backgroundColor: deferredColors.border, marginVertical: Spacing.md, borderWidth: 0 },
-      figure: { marginBottom: Spacing.md, marginLeft: 0, marginRight: 0 },
-      figcaption: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 12, color: deferredColors.muted, marginTop: 4, textAlign: 'center' as const },
-      table: { marginBottom: Spacing.md, borderWidth: 1, borderColor: deferredColors.border, borderRadius: 4 },
-      th: { fontFamily: Fonts?.mono ?? 'monospace', fontSize: 13, fontWeight: '600' as const, color: deferredColors.text, backgroundColor: deferredColors.surface, padding: 8, borderBottomWidth: 1, borderBottomColor: deferredColors.border },
-      td: { padding: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: deferredColors.border, lineHeight: Typography.body.lineHeight },
-      strong: { fontWeight: '700' as const },
-      em: { fontStyle: 'italic' as const },
-    }),
-    [deferredColors, contentWidth],
-  );
+  const lightTagsStyles = useMemo(() => makeTagsStyles(FluxColors.light, contentWidth), [contentWidth]);
+  const darkTagsStyles = useMemo(() => makeTagsStyles(FluxColors.dark, contentWidth), [contentWidth]);
 
   const systemFonts = useMemo(
     () => [
       ...(Fonts?.mono ? [Fonts.mono] : []),
       ...(Fonts?.serif ? [Fonts.serif] : []),
     ],
+    [],
+  );
+
+  const renderers = useMemo(
+    () => ({
+      pre: ({ TDefaultRenderer, ...props }: any) => (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={chunkRenderers.scroll}>
+          <TDefaultRenderer {...props} />
+        </ScrollView>
+      ),
+    }),
     [],
   );
 
@@ -218,7 +266,6 @@ export default function ArticleScreen() {
     };
   }, [articleUrl, feedUrl, ensureBody]);
 
-  // Auto-mark read after 300ms on screen
   useEffect(() => {
     if (article && !article.isRead) {
       markTimer.current = setTimeout(() => {
@@ -237,13 +284,16 @@ export default function ArticleScreen() {
       <ArticleChunk
         html={item}
         contentWidth={contentWidth}
-        baseStyle={baseStyle}
-        tagsStyles={tagsStyles}
+        lightBaseStyle={lightBaseStyle}
+        darkBaseStyle={darkBaseStyle}
+        lightTagsStyles={lightTagsStyles}
+        darkTagsStyles={darkTagsStyles}
         systemFonts={systemFonts}
         renderersProps={renderersProps}
+        renderers={renderers}
       />
     ),
-    [contentWidth, baseStyle, tagsStyles, systemFonts, renderersProps],
+    [contentWidth, lightBaseStyle, darkBaseStyle, lightTagsStyles, darkTagsStyles, systemFonts, renderersProps, renderers],
   );
 
   const ListHeader = useMemo(
@@ -303,8 +353,6 @@ export default function ArticleScreen() {
           )
         }
         contentContainerStyle={styles.content}
-        // Progressive rendering tunables — keep first paint cheap, fill in
-        // off-screen chunks as the user scrolls.
         initialNumToRender={3}
         maxToRenderPerBatch={2}
         windowSize={5}
@@ -313,6 +361,12 @@ export default function ArticleScreen() {
     </View>
   );
 }
+
+const chunkRenderers = StyleSheet.create({
+  scroll: {
+    backgroundColor: 'transparent',
+  },
+});
 
 const makeStyles = (c: FluxColorSet) =>
   StyleSheet.create({

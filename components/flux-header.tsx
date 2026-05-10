@@ -29,6 +29,29 @@ function ChevronLeft({ color, size = 22 }: { color: string; size?: number }) {
   );
 }
 
+function SearchIcon({ color, size = 20 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 256 256">
+      <Path
+        d="M112,192a80,80,0,1,1,80-80A80,80,0,0,1,112,192Z"
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={20}
+      />
+      <Path
+        d="M168,168l56,56"
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={20}
+      />
+    </Svg>
+  );
+}
+
 export function FluxHeader({ showBack = false }: FluxHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -83,11 +106,24 @@ export function FluxHeader({ showBack = false }: FluxHeaderProps) {
           </Pressable>
         )}
       </View>
-      <ThemeToggle
-        isDark={isDark}
-        onPress={handleThemePress}
-        color={colors.text}
-      />
+      <View style={styles.right}>
+        {atHome && (
+          <Pressable
+            onPress={() => {
+              playClick('open');
+              router.push('/search');
+            }}
+            hitSlop={8}
+            style={({ pressed }) => pressed && { opacity: 0.5 }}>
+            <SearchIcon color={colors.text} />
+          </Pressable>
+        )}
+        <ThemeToggle
+          isDark={isDark}
+          onPress={handleThemePress}
+          color={colors.text}
+        />
+      </View>
     </View>
   );
 }
@@ -105,6 +141,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+  },
+  right: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
   },
   backButton: {
     marginLeft: -4,

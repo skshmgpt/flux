@@ -24,6 +24,7 @@ function StackHost() {
         <Stack.Screen name="index" />
         <Stack.Screen name="feed/[url]" />
         <Stack.Screen name="article/[url]" />
+        <Stack.Screen name="search" />
       </Stack>
     </View>
   );
