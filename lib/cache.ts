@@ -17,12 +17,19 @@ export async function removeBodies(articleUrls: string[]): Promise<void> {
   );
 }
 
+const CACHE_BATCH = 20;
+
 export async function cacheBodiesForArticles(
   articles: Array<{ url: string; content: string }>,
-  maxRecent = 10,
 ): Promise<void> {
-  const toCache = articles.slice(0, maxRecent);
-  await Promise.all(
-    toCache.map((a) => AsyncStorage.setItem(PREFIX + a.url, a.content)),
-  );
+  for (let i = 0; i < articles.length; i += CACHE_BATCH) {
+    const batch = articles.slice(i, i + CACHE_BATCH);
+    await Promise.all(
+      batch.map((a) => AsyncStorage.setItem(PREFIX + a.url, a.content)),
+    );
+    // Yield to the JS thread so taps/animations don't stall during a big cache.
+    if (i + CACHE_BATCH < articles.length) {
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
+  }
 }

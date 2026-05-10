@@ -1,7 +1,7 @@
 import { FluxColors } from '@/constants/theme';
-import { useStore } from '@/lib/store';
+import { useThemeStore } from '@/lib/theme-store';
 
 export function useFluxColors() {
-  const themeMode = useStore((s) => s.themeMode);
+  const themeMode = useThemeStore((s) => s.themeMode);
   return themeMode === 'dark' ? FluxColors.dark : FluxColors.light;
 }

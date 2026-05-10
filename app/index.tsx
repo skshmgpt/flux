@@ -16,8 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FluxHeader } from '@/components/flux-header';
 import { FluxColorSet, FluxColors, Fonts, Spacing, Typography } from '@/constants/theme';
 import { useFluxColors } from '@/hooks/use-flux-colors';
+import { useArticleStore } from '@/lib/article-store';
 import { playClick } from '@/lib/clicks';
 import { useStore } from '@/lib/store';
+import type { Feed } from '@/lib/types';
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts;
@@ -35,7 +37,8 @@ export default function FeedsScreen() {
   const router = useRouter();
   const colors = useFluxColors();
   const feeds = useStore((s) => s.feeds);
-  const articles = useStore((s) => s.articles);
+  const articleMap = useArticleStore((s) => s.articles);
+  const feedToUrls = useArticleStore((s) => s.feedToUrls);
   const refreshAllFeeds = useStore((s) => s.refreshAllFeeds);
   const removeFeed = useStore((s) => s.removeFeed);
   const addFeed = useStore((s) => s.addFeed);
@@ -49,9 +52,17 @@ export default function FeedsScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const unreadCount = useCallback(
-    (feedUrl: string) =>
-      articles.filter((a) => a.feedUrl === feedUrl && !a.isRead).length,
-    [articles],
+    (feedUrl: string) => {
+      const urls = feedToUrls[feedUrl];
+      if (!urls) return 0;
+      let n = 0;
+      for (const u of urls) {
+        const a = articleMap[u];
+        if (a && !a.isRead) n++;
+      }
+      return n;
+    },
+    [feedToUrls, articleMap],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -114,6 +125,42 @@ export default function FeedsScreen() {
       setError(`Failed: ${msg}`);
     }
   };
+
+  const renderFeed = useCallback(
+    ({ item: feed }: { item: Feed }) => {
+      const unread = unreadCount(feed.url);
+      const isStale = Date.now() - feed.lastFetchedAt > 3600000;
+
+      return (
+        <Pressable
+          style={({ pressed }) => [
+            styles.feedRow,
+            pressed && { opacity: 0.5 },
+          ]}
+          onPress={() => {
+            playClick('open');
+            router.push(`/feed/${encodeURIComponent(feed.url)}`);
+          }}
+          onLongPress={() => handleRemove(feed.url, feed.title)}>
+          <View style={styles.feedInfo}>
+            <Text style={styles.feedTitle} numberOfLines={1}>
+              {feed.title}
+            </Text>
+            <View style={styles.feedMeta}>
+              {unread > 0 && (
+                <Text style={styles.unreadBadge}>{unread} new</Text>
+              )}
+              <Text style={styles.feedTimestamp}>
+                {timeAgo(feed.lastFetchedAt)}
+              </Text>
+              {isStale && <View style={styles.staleDot} />}
+            </View>
+          </View>
+        </Pressable>
+      );
+    },
+    [styles, router, unreadCount, handleRemove],
+  );
 
   const addRow = adding ? (
     <Animated.View
@@ -203,38 +250,11 @@ export default function FeedsScreen() {
           </View>
         }
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        renderItem={({ item: feed }) => {
-          const unread = unreadCount(feed.url);
-          const isStale = Date.now() - feed.lastFetchedAt > 3600000;
-
-          return (
-            <Pressable
-              style={({ pressed }) => [
-                styles.feedRow,
-                pressed && { opacity: 0.5 },
-              ]}
-              onPress={() => {
-                playClick('open');
-                router.push(`/feed/${encodeURIComponent(feed.url)}`);
-              }}
-              onLongPress={() => handleRemove(feed.url, feed.title)}>
-              <View style={styles.feedInfo}>
-                <Text style={styles.feedTitle} numberOfLines={1}>
-                  {feed.title}
-                </Text>
-                <View style={styles.feedMeta}>
-                  {unread > 0 && (
-                    <Text style={styles.unreadBadge}>{unread} new</Text>
-                  )}
-                  <Text style={styles.feedTimestamp}>
-                    {timeAgo(feed.lastFetchedAt)}
-                  </Text>
-                  {isStale && <View style={styles.staleDot} />}
-                </View>
-              </View>
-            </Pressable>
-          );
-        }}
+        renderItem={renderFeed}
+        maxToRenderPerBatch={15}
+        windowSize={5}
+        removeClippedSubviews={true}
+        initialNumToRender={12}
         refreshing={isRefreshing.current}
         onRefresh={handleRefresh}
       />

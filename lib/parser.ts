@@ -103,22 +103,46 @@ function parseItem(xml: string): ParsedItem {
   };
 }
 
+// Yield the JS thread for one task tick so taps/animations queued behind
+// us can run. Used between item parses to keep the UI responsive while
+// chewing through a large feed.
+const yieldToUI = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
+const YIELD_EVERY = 8;
+
+async function parseItemsChunked(blocks: string[]): Promise<ParsedItem[]> {
+  const out: ParsedItem[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    out.push(parseItem(blocks[i]));
+    if (i > 0 && i % YIELD_EVERY === 0) {
+      await yieldToUI();
+    }
+  }
+  return out;
+}
+
 export async function parseFeed(url: string): Promise<ParsedFeed> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch feed: ${response.status}`);
   }
   const xml = await response.text();
+  // Yield once after fetch+text — both are fine on their own but the
+  // regex passes below are heavy and we want the UI to breathe first.
+  await yieldToUI();
 
   // RSS 2.0
   const rssChannel = xml.match(/<rss[\s\S]*?<channel>([\s\S]*?)<\/channel>/i);
   if (rssChannel) {
     const channel = rssChannel[1];
     const itemBlocks = tags('item', channel);
+    await yieldToUI();
+    const items = await parseItemsChunked(itemBlocks);
     return {
       title: tag('title', channel) || url,
       description: tag('description', channel) || undefined,
-      items: itemBlocks.map(parseItem),
+      items,
     };
   }
 
@@ -127,10 +151,12 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
   if (atomFeed) {
     const feedXml = atomFeed[0];
     const entryBlocks = tags('entry', feedXml);
+    await yieldToUI();
+    const items = await parseItemsChunked(entryBlocks);
     return {
       title: tag('title', feedXml) || url,
       description: tag('subtitle', feedXml) || undefined,
-      items: entryBlocks.map(parseItem),
+      items,
     };
   }
 
@@ -140,10 +166,12 @@ export async function parseFeed(url: string): Promise<ParsedFeed> {
     const rdfXml = rdf[0];
     const channelXml = rdfXml.match(/<channel[\s\S]*?<\/channel>/i)?.[0] ?? '';
     const itemBlocks = tags('item', rdfXml);
+    await yieldToUI();
+    const items = await parseItemsChunked(itemBlocks);
     return {
       title: tag('title', channelXml) || url,
       description: tag('description', channelXml) || undefined,
-      items: itemBlocks.map(parseItem),
+      items,
     };
   }
 

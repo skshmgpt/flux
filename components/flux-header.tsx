@@ -6,7 +6,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Fonts, Spacing, Typography } from '@/constants/theme';
 import { useFluxColors } from '@/hooks/use-flux-colors';
 import { playClick } from '@/lib/clicks';
-import { useStore } from '@/lib/store';
+import { useThemeStore } from '@/lib/theme-store';
 
 import { ThemeToggle } from './theme-icon';
 
@@ -34,8 +34,8 @@ export function FluxHeader({ showBack = false }: FluxHeaderProps) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const colors = useFluxColors();
-  const themeMode = useStore((s) => s.themeMode);
-  const toggleTheme = useStore((s) => s.toggleTheme);
+  const themeMode = useThemeStore((s) => s.themeMode);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const isDark = themeMode === 'dark';
   const atHome = pathname === '/' || pathname === '';
 

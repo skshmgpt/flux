@@ -7,12 +7,12 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useFluxColors } from '@/hooks/use-flux-colors';
-import { useStore } from '@/lib/store';
+import { useThemeStore } from '@/lib/theme-store';
 
 const TRANSITION_MS = 150;
 
 export function ThemeTransition({ children }: { children: ReactNode }) {
-  const themeMode = useStore((s) => s.themeMode);
+  const themeMode = useThemeStore((s) => s.themeMode);
   const colors = useFluxColors();
   const opacity = useSharedValue(0);
 
